@@ -302,6 +302,11 @@ void setup()
 { 
   setup_powerhold();
   MYSERIAL.begin(BAUDRATE);
+  
+#ifdef SECOND_SERIAL
+  SECOND_SERIAL.begin(SECOND_SERIAL_BAUDRATE);
+#endif
+  
   SERIAL_PROTOCOLLNPGM("start");
   SERIAL_ECHO_START;
   
@@ -372,6 +377,18 @@ void setup()
 
 void loop()
 {
+#ifdef SECOND_SERIAL
+  if(SECOND_SERIAL.available() && !serial_count)
+  {
+    SerialMgr.ChangeSerial(&SECOND_SERIAL);
+  }else{
+    if(MYSERIAL.available() && !serial_count)
+    {
+      SerialMgr.ChangeSerial(&MYSERIAL);
+     }
+  }
+#endif  
+
   if(buflen < (BUFSIZE-1))
     get_command();
   #ifdef SDSUPPORT
@@ -1543,7 +1560,11 @@ void process_commands()
 void FlushSerialRequestResend()
 {
   //char cmdbuffer[bufindr][100]="Resend:";
+#ifdef SECOND_SERIAL
+  SerialMgr.cur()->flush();
+#else
   MYSERIAL.flush();
+#endif  
   SERIAL_PROTOCOLPGM(MSG_RESEND);
   SERIAL_PROTOCOLLN(gcode_LastN + 1);
   ClearToSend();

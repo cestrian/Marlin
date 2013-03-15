@@ -56,12 +56,16 @@
 //User specified version info of THIS file to display in [Pronterface, etc] terminal window during startup.
 //Implementation of an idea by Prof Braino to inform user that any changes made
 //to THIS file by the user have been successfully uploaded into firmware.
-#define STRING_VERSION_CONFIG_H "2012-12-21-JMG" //Personal revision number for changes to THIS file.
+#define STRING_VERSION_CONFIG_H "2013-03-11-ASM" //Personal revision number for changes to THIS file.
 #define STRING_CONFIG_H_AUTHOR "RepRapPro" //Who made the changes.
 
 // This determines the communication speed of the printer
 //#define BAUDRATE 250000
 #define BAUDRATE 115200
+
+//Do you have a second serial you want activated (for bluetooth as example)
+#define SECOND_SERIAL MSerial1
+#define SECOND_SERIAL_BAUDRATE 115200
 
 //// The following define selects which electronics board you have. Please choose the one that matches your setup
 // Sanguinololu 1.2 and above = 62
@@ -260,7 +264,7 @@ const bool Z_ENDSTOPS_INVERTING = false; // set to true to invert the logic of t
 
 // default settings 
 // X, Y, Z, E steps per mm
-#define DEFAULT_AXIS_STEPS_PER_UNIT   {91.4286, 91.4286, 4000, 875} 
+#define DEFAULT_AXIS_STEPS_PER_UNIT   {91.4286, 91.4286, 4000, 980} 
 
 // Defaults changed by the G10 command
 

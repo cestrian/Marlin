@@ -23,7 +23,9 @@
 
 #ifndef MarlinSerial_h
 #define MarlinSerial_h
-#include "Marlin.h"
+//#include "Marlin.h"
+
+#define  FORCE_INLINE __attribute__((always_inline)) inline
 
 #ifndef REPRAPPRO_MULTIMATERIALS
 
@@ -53,11 +55,33 @@ struct ring_buffer
   extern ring_buffer rx_buffer;
 #endif
 
+#if defined(UBRR1H)
+  extern ring_buffer rx_buffer1;
+#endif
+
 class MarlinSerial //: public Stream
 {
-
+  private:
+    ring_buffer *_rx_buffer;
+    volatile uint8_t *_ubrrh;
+    volatile uint8_t *_ubrrl;
+    volatile uint8_t *_ucsra;
+    volatile uint8_t *_ucsrb;
+    volatile uint8_t *_udr;
+    uint8_t _rxc;
+    uint8_t _rxen;
+    uint8_t _txen;
+    uint8_t _rxcie;
+    uint8_t _udre;
+    uint8_t _u2x;
+    
   public:
-    MarlinSerial();
+    MarlinSerial(ring_buffer *rx_buffer,
+      volatile uint8_t *ubrrh, volatile uint8_t *ubrrl,
+      volatile uint8_t *ucsra, volatile uint8_t *ucsrb,
+      volatile uint8_t *udr,
+      uint8_t rxc, uint8_t rxen, uint8_t txen, uint8_t rxcie, uint8_t udre, uint8_t u2x);
+      
     void begin(long);
     void end();
     int peek(void);
@@ -66,31 +90,31 @@ class MarlinSerial //: public Stream
     
     FORCE_INLINE int available(void)
     {
-      return (unsigned int)(RX_BUFFER_SIZE + rx_buffer.head - rx_buffer.tail) % RX_BUFFER_SIZE;
+      return (unsigned int)(RX_BUFFER_SIZE + _rx_buffer->head - _rx_buffer->tail) % RX_BUFFER_SIZE;
     }
     
     FORCE_INLINE void write(uint8_t c)
     {
-      while (!((UCSR0A) & (1 << UDRE0)))
+      while (!((*_ucsra) & (1 << _udre)))
         ;
 
-      UDR0 = c;
+      *_udr = c;
     }
     
     
     FORCE_INLINE void checkRx(void)
     {
-      if((UCSR0A & (1<<RXC0)) != 0) {
-        unsigned char c  =  UDR0;
-        int i = (unsigned int)(rx_buffer.head + 1) % RX_BUFFER_SIZE;
+      if((*_ucsra & (1<<_rxc)) != 0) {
+        unsigned char c  =  *_udr;
+        int i = (unsigned int)(_rx_buffer->head + 1) % RX_BUFFER_SIZE;
 
         // if we should be storing the received character into the location
         // just before the tail (meaning that the head would advance to the
         // current location of the tail), we're about to overflow the buffer
         // and so we don't write the character or advance the head.
-        if (i != rx_buffer.tail) {
-          rx_buffer.buffer[rx_buffer.head] = c;
-          rx_buffer.head = i;
+        if (i != _rx_buffer->tail) {
+          _rx_buffer->buffer[_rx_buffer->head] = c;
+          _rx_buffer->head = i;
         }
       }
     }
@@ -148,7 +172,11 @@ class MarlinSerial //: public Stream
 };
 
 extern MarlinSerial MSerial;
-extern MarlinSerial MSerial1;
+
+#if defined(UBRR1H)
+  extern MarlinSerial MSerial1;
+#endif
+
 #endif // ! teensylu
 
 #endif

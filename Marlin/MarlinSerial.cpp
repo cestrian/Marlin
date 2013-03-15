@@ -37,22 +37,24 @@
   ring_buffer rx_buffer  =  { { 0 }, 0, 0 };
 #endif
 
-FORCE_INLINE void store_char(unsigned char c)
+#if defined(UBRR1H)
+  ring_buffer rx_buffer1  =  { { 0 }, 0, 0 };
+#endif
+
+FORCE_INLINE void store_char(unsigned char c, ring_buffer *rx_buffer)
 {
-  int i = (unsigned int)(rx_buffer.head + 1) % RX_BUFFER_SIZE;
+  int i = (unsigned int)(rx_buffer->head + 1) % RX_BUFFER_SIZE;
 
   // if we should be storing the received character into the location
   // just before the tail (meaning that the head would advance to the
   // current location of the tail), we're about to overflow the buffer
   // and so we don't write the character or advance the head.
-  if (i != rx_buffer.tail) {
-    rx_buffer.buffer[rx_buffer.head] = c;
-    rx_buffer.head = i;
+  if (i != rx_buffer->tail) {
+    rx_buffer->buffer[rx_buffer->head] = c;
+    rx_buffer->head = i;
   }
 }
 
-
-//#elif defined(SIG_USART_RECV)
 #if defined(USART0_RX_vect)
   // fixed by Mark Sproul this is on the 644/644p
   //SIGNAL(SIG_USART_RECV)
@@ -65,15 +67,46 @@ FORCE_INLINE void store_char(unsigned char c)
   #else
     #error UDR not defined
   #endif
-    store_char(c);
+    store_char(c, &rx_buffer);
+  }
+#endif
+
+#if defined(USART1_RX_vect)
+  // fixed by Mark Sproul this is on the 644/644p
+  //SIGNAL(SIG_USART_RECV)
+  SIGNAL(USART1_RX_vect)
+  {
+  #if defined(UDR1)
+    unsigned char c  =  UDR1;
+  #elif defined(UDR)
+    unsigned char c  =  UDR;  //  atmega8, atmega32
+  #else
+    #error UDR not defined
+  #endif
+    store_char(c, &rx_buffer1);
   }
 #endif
 
 // Constructors ////////////////////////////////////////////////////////////////
 
-MarlinSerial::MarlinSerial()
+MarlinSerial::MarlinSerial(ring_buffer *rx_buffer,
+  volatile uint8_t *ubrrh, volatile uint8_t *ubrrl,
+  volatile uint8_t *ucsra, volatile uint8_t *ucsrb,
+  volatile uint8_t *udr,
+  uint8_t rxc, uint8_t rxen, uint8_t txen, uint8_t rxcie, uint8_t udre, uint8_t u2x)
 {
-
+  _rx_buffer = rx_buffer;
+  _ubrrh = ubrrh;
+  _ubrrl = ubrrl;
+  _ucsra = ucsra;
+  _ucsrb = ucsrb;
+  _udr = udr;
+  _rxen = rxen;
+  _txen = txen;
+  _rxcie = rxcie;
+  _udre = udre;
+  _rxc = rxc;
+  _u2x = u2x;
 }
 
 // Public Methods //////////////////////////////////////////////////////////////
@@ -93,48 +126,48 @@ void MarlinSerial::begin(long baud)
 #endif
   
   if (useU2X0) {
-    UCSR0A = 1 << U2X0;
+    UCSR1A = 1 << U2X0;
     baud_setting = (F_CPU / 4 / baud - 1) / 2;
   } else {
-    UCSR0A = 0;
+    UCSR1A = 0;
     baud_setting = (F_CPU / 8 / baud - 1) / 2;
   }
 
   // assign the baud_setting, a.k.a. ubbr (USART Baud Rate Register)
-  UBRR0H = baud_setting >> 8;
-  UBRR0L = baud_setting;
+  *_ubrrh = baud_setting >> 8;
+  *_ubrrl = baud_setting;
 
-  sbi(UCSR0B, RXEN0);
-  sbi(UCSR0B, TXEN0);
-  sbi(UCSR0B, RXCIE0);
+  sbi(*_ucsrb, _rxen);
+  sbi(*_ucsrb, _txen);
+  sbi(*_ucsrb, _rxcie);
 }
 
 void MarlinSerial::end()
 {
-  cbi(UCSR0B, RXEN0);
-  cbi(UCSR0B, TXEN0);
-  cbi(UCSR0B, RXCIE0);  
+  cbi(*_ucsrb, _rxen);
+  cbi(*_ucsrb, _txen);
+  cbi(*_ucsrb, _rxcie); 
 }
 
 
 
 int MarlinSerial::peek(void)
 {
-  if (rx_buffer.head == rx_buffer.tail) {
+  if (_rx_buffer->head == _rx_buffer->tail) {
     return -1;
   } else {
-    return rx_buffer.buffer[rx_buffer.tail];
+    return _rx_buffer->buffer[_rx_buffer->tail];
   }
 }
 
 int MarlinSerial::read(void)
 {
   // if the head isn't ahead of the tail, we don't have any characters
-  if (rx_buffer.head == rx_buffer.tail) {
+  if (_rx_buffer->head == _rx_buffer->tail) {
     return -1;
   } else {
-    unsigned char c = rx_buffer.buffer[rx_buffer.tail];
-    rx_buffer.tail = (unsigned int)(rx_buffer.tail + 1) % RX_BUFFER_SIZE;
+    unsigned char c = _rx_buffer->buffer[_rx_buffer->tail];
+    _rx_buffer->tail = (unsigned int)(_rx_buffer->tail + 1) % RX_BUFFER_SIZE;
     return c;
   }
 }
@@ -150,7 +183,7 @@ void MarlinSerial::flush()
   // the value to rx_buffer_tail; the previous value of rx_buffer_head
   // may be written to rx_buffer_tail, making it appear as if the buffer
   // were full, not empty.
-  rx_buffer.head = rx_buffer.tail;
+  _rx_buffer->head = _rx_buffer->tail;
 }
 
 
@@ -327,9 +360,19 @@ void MarlinSerial::printFloat(double number, uint8_t digits)
 // Preinstantiate Objects //////////////////////////////////////////////////////
 
 
-MarlinSerial MSerial;
+#if defined(UBRRH) && defined(UBRRL)
+  MarlinSerial MSerial(&rx_buffer, &UBRRH, &UBRRL, &UCSRA, &UCSRB, &UDR, RXC, RXEN, TXEN, RXCIE, UDRE, U2X);
+#elif defined(UBRR0H) && defined(UBRR0L)
+  MarlinSerial MSerial(&rx_buffer, &UBRR0H, &UBRR0L, &UCSR0A, &UCSR0B, &UDR0, RXC0, RXEN0, TXEN0, RXCIE0, UDRE0, U2X0);
+#elif defined(USBCON)
+  #warning no serial port defined (port 0)
+#else
+  #error no serial port defined (port 0)
+#endif
 
-MarlinSerial MSerial1;
+#if defined(UBRR1H)
+  MarlinSerial MSerial1(&rx_buffer1, &UBRR1H, &UBRR1L, &UCSR1A, &UCSR1B, &UDR1, RXC1, RXEN1, TXEN1, RXCIE1, UDRE1, U2X1);
+#endif
 
 #endif // whole file
 #endif //teensylu

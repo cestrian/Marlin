@@ -246,9 +246,18 @@ FORCE_INLINE unsigned short calc_timer(unsigned short step_rate) {
     timer = (unsigned short)pgm_read_word_near(table_address);
     timer -= (((unsigned short)pgm_read_word_near(table_address+2) * (unsigned char)(step_rate & 0x0007))>>3);
   }
-  if(timer < 100) { timer = 100; MYSERIAL.print(MSG_STEPPER_TO_HIGH); MYSERIAL.println(step_rate); }//(20kHz this should never happen)
-  return timer;
-}
+  if(timer < 100) {
+    timer = 100; 
+#ifdef SECOND_SERIAL
+        SerialMgr.cur()->print(MSG_STEPPER_TO_HIGH);
+        SerialMgr.cur()->println(step_rate);
+#else
+        MYSERIAL.print(MSG_STEPPER_TO_HIGH); 
+        MYSERIAL.println(step_rate); 
+ #endif
+     }//(20kHz this should never happen)
+    return timer;
+  }
 
 // Initializes the trapezoid generator from the current block. Called whenever a new 
 // block begins.
